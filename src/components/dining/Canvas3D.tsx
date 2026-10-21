@@ -70,6 +70,7 @@ export function Canvas3D({
   zones,
   mode,
   selectedId,
+  hoveredId = null,
   dimZone,
   onSelect,
   onHover,
@@ -82,6 +83,7 @@ export function Canvas3D({
   zones: SceneZone[];
   mode: "preview" | "operations";
   selectedId: number | null;
+  hoveredId?: number | null;
   dimZone: string | null;
   onSelect: (id: number) => void;
   onHover: (id: number | null) => void;
@@ -146,6 +148,7 @@ export function Canvas3D({
             zones={zones}
             mode={mode}
             selectedId={selectedId}
+            hoveredId={hoveredId}
             dimZone={dimZone}
             onSelect={onSelect}
             onHover={onHover}

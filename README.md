@@ -41,7 +41,7 @@ npm run dev        # servidor de desenvolvimento
 npm run build      # build de produção
 npm start          # servir o build
 npm run typecheck  # tsc --noEmit
-npm test           # vitest (63 testes)
+npm test           # vitest (64 testes)
 ```
 
 ### Variáveis de ambiente
@@ -156,7 +156,7 @@ tests/                 pricing, reservations-rules, orders/flows, layout, cena 3
 npm test
 ```
 
-63 testes em 6 ficheiros:
+64 testes em 6 ficheiros:
 
 - `pricing.test.ts` — subtotais, IVA incluído/adicionado, serviço, descontos, arredondamento, saldo.
 - `reservations-rules.test.ts` — datas em Lisboa, capacidade e conflitos por mesa.
@@ -166,7 +166,7 @@ npm test
   fecho e auditoria (contra SQLite temporário).
 - `layout.test.ts` — 20 mesas semeadas, coordenadas, cadeiras por lugar, mesas sem sobreposição.
 - `scene.test.tsx` — a cena 3D renderiza um grupo por mesa, orçamento de luzes fixo, culling de
-  convidados em qualidade baixa, estados selecionado/esbatido e modo `prefers-reduced-motion`.
+  convidados em qualidade baixa, estados selecionado/hover/esbatido e modo `prefers-reduced-motion`.
 
 Além dos testes, o fluxo completo foi exercitado por HTTP contra o servidor de desenvolvimento
 (`POST /api/orders` → envio → cozinha → servir → pagamento → confirmação do gestor → fecho →

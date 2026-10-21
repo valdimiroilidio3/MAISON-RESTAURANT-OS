@@ -141,6 +141,14 @@ describe("3D dining room scene", () => {
     expect(opacities.has(0.12)).toBe(true); // dimmed ring
   });
 
+  it("highlights the hovered table with its own ring", async () => {
+    const target = tables[2];
+    const renderer = await render({ hoveredId: target.id });
+    const rings = walkAll(renderer).filter((n) => n.isMesh && n.geometry?.type === "RingGeometry");
+    const opacities = rings.map((r) => (r.material as any)?.opacity);
+    expect(opacities).toContain(0.7);
+  });
+
   it("survives reduced motion and preview mode", async () => {
     const renderer = await render({ reducedMotion: true, mode: "preview", quality: LOW_QUALITY });
     await act(async () => {

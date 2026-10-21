@@ -210,6 +210,7 @@ export function DiningRoomExplorer({
                 selectedId={selectedId}
                 dimZone={dimZone}
                 onSelect={handleSelect}
+                hoveredId={hovered}
                 onHover={setHovered}
                 tier={tier}
                 reducedMotion={reducedMotion}

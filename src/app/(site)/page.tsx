@@ -301,8 +301,8 @@ export default function HomePage() {
             <p className="eyebrow">Reservas</p>
             <h2 className="display-xl mt-4">A mesa está posta.</h2>
             <p className="lede mt-5 max-w-md">
-              Reserve em menos de um minuto. Confirmamos por email e guardamos a mesa durante 15 minutos após a hora
-              marcada.
+              Reserve em menos de um minuto, com disponibilidade confirmada na hora. Guardamos a mesa durante 15
+              minutos após a hora marcada.
             </p>
           </div>
           <div className="flex flex-col gap-3 lg:items-end">

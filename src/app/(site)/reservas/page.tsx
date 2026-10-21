@@ -31,7 +31,7 @@ export default function ReservationsPage() {
             <p className="eyebrow">Reservas</p>
             <h1 className="display-lg mt-3 max-w-md">A sua mesa, à sua hora.</h1>
             <p className="mt-4 max-w-sm text-sm leading-relaxed text-cream-dim">
-              Confirmamos a mesa por email. Em noites de serviço completo, a lista de espera é gerida pela equipa de sala.
+              A confirmação aparece no ecrã e fica registada para a equipa de sala. Em noites de serviço completo, a lista de espera é gerida pela equipa.
             </p>
             <ul className="mt-7 space-y-2 text-[11px] text-muted">
               <li className="flex items-center gap-2">

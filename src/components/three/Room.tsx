@@ -387,6 +387,7 @@ export function DiningRoomScene({
   zones,
   mode,
   selectedId,
+  hoveredId = null,
   dimZone,
   onSelect,
   onHover,
@@ -397,6 +398,7 @@ export function DiningRoomScene({
   zones: SceneZone[];
   mode: "preview" | "operations";
   selectedId: number | null;
+  hoveredId?: number | null;
   dimZone: string | null;
   onSelect: (id: number) => void;
   onHover: (id: number | null) => void;
@@ -412,7 +414,7 @@ export function DiningRoomScene({
           key={table.id}
           table={table}
           selected={selectedId === table.id}
-          hovered={false}
+          hovered={hoveredId === table.id}
           dimmed={!!dimZone && table.zoneSlug !== dimZone}
           preview={mode === "preview"}
           onSelect={onSelect}
