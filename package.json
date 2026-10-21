@@ -1,0 +1,40 @@
+{
+  "name": "maison-restaurant-os",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MAISON® — Restaurant OS. Premium restaurant management platform with an interactive 3D dining room.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@fontsource-variable/fraunces": "^5.2.9",
+    "@fontsource-variable/inter": "^5.2.8",
+    "@react-three/drei": "10.7.9",
+    "@react-three/fiber": "9.8.2",
+    "lucide-react": "0.545.0",
+    "next": "16.4.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "server-only": "0.0.1",
+    "three": "0.186.1",
+    "zod": "4.1.12",
+    "zustand": "5.0.15"
+  },
+  "devDependencies": {
+    "@react-three/test-renderer": "^9.1.1",
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/node": "22.18.10",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "@types/three": "0.186.0",
+    "jsdom": "^30.1.3",
+    "tailwindcss": "4.3.3",
+    "typescript": "5.9.3",
+    "vitest": "5.0.5"
+  }
+}
