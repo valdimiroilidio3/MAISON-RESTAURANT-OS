@@ -133,6 +133,52 @@ describe("sign in", () => {
   });
 });
 
+describe("sign-in server action", () => {
+  beforeEach(() => {
+    jar.clear();
+    lastCookieOptions = null;
+  });
+
+  const idle = { ok: false, message: "" };
+
+  function form(entries: Record<string, string>) {
+    const data = new FormData();
+    for (const [key, value] of Object.entries(entries)) data.set(key, value);
+    return data;
+  }
+
+  it("authenticates and redirects to the requested admin page", async () => {
+    const { signInAction } = await import("@/app/actions/auth");
+    await expect(signInAction(idle, form({ email: "chef@maison.pt", password: "Maison!2026", next: "/admin/cozinha" }))).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/cozinha",
+    );
+    expect(jar.has(SESSION_COOKIE)).toBe(true);
+    expect((await getSessionUser())?.role).toBe("chef");
+  });
+
+  it("refuses off-site redirect targets", async () => {
+    const { signInAction } = await import("@/app/actions/auth");
+    await expect(
+      signInAction(idle, form({ email: "manager@maison.pt", password: "Maison!2026", next: "https://evil.example" })),
+    ).rejects.toThrow("NEXT_REDIRECT:/admin");
+  });
+
+  it("returns a message instead of a session on bad credentials", async () => {
+    const { signInAction } = await import("@/app/actions/auth");
+    const state = await signInAction(idle, form({ email: "manager@maison.pt", password: "errada", next: "/admin" }));
+    expect(state.ok).toBe(false);
+    expect(state.message).toMatch(/Credenciais inválidas/);
+    expect(jar.has(SESSION_COOKIE)).toBe(false);
+  });
+
+  it("requires both fields", async () => {
+    const { signInAction } = await import("@/app/actions/auth");
+    const state = await signInAction(idle, form({ email: "", password: "" }));
+    expect(state.message).toMatch(/Preencha/);
+    expect(jar.has(SESSION_COOKIE)).toBe(false);
+  });
+});
+
 describe("session resolution", () => {
   beforeEach(() => {
     jar.clear();

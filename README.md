@@ -41,7 +41,7 @@ npm run dev        # servidor de desenvolvimento
 npm run build      # build de produção
 npm start          # servir o build
 npm run typecheck  # tsc --noEmit
-npm test           # vitest (64 testes)
+npm test           # vitest (68 testes)
 ```
 
 ### Variáveis de ambiente
@@ -156,12 +156,12 @@ tests/                 pricing, reservations-rules, orders/flows, layout, cena 3
 npm test
 ```
 
-64 testes em 6 ficheiros:
+68 testes em 6 ficheiros:
 
 - `pricing.test.ts` — subtotais, IVA incluído/adicionado, serviço, descontos, arredondamento, saldo.
 - `reservations-rules.test.ts` — datas em Lisboa, capacidade e conflitos por mesa.
-- `auth.test.ts` — hashing scrypt, credenciais semeadas, login (sessão + auditoria + cookie
-  `httpOnly`), expiração, utilizadores inativos, logout e matriz de papéis.
+- `auth.test.ts` — hashing scrypt, credenciais semeadas, server action de login (sessão, auditoria,
+  cookie `httpOnly`, open redirect), expiração, utilizadores inativos, logout e matriz de papéis.
 - `orders.test.ts` — fluxo de comanda, envio idempotente, permissões por papel, stock, pagamentos,
   fecho e auditoria (contra SQLite temporário).
 - `layout.test.ts` — 20 mesas semeadas, coordenadas, cadeiras por lugar, mesas sem sobreposição.
