@@ -10,6 +10,12 @@ export const metadata: Metadata = {
   description: "Percorra o salão do MAISON em três dimensões: esplanada, sala e balcão. Mesas e lugares reais.",
 };
 
+const ZONE_COPY: Record<string, string> = {
+  esplanada: "Ar livre, toldos de linho e a rua como cenário",
+  sala: "Madeira escura, pedra clara e luz baixa",
+  balcao: "Balcão de mármore para quem vem sozinho",
+};
+
 export default function SalonPage() {
   const floor = getPublicFloor();
   const sceneTables = floor.tables.map((table) => ({
@@ -57,7 +63,7 @@ export default function SalonPage() {
               <li key={zone.id} className="flex items-center justify-between gap-3 py-3">
                 <div>
                   <p className="text-sm text-cream">{zone.name}</p>
-                  <p className="text-[11px] text-muted">Vista para a rua e luz natural</p>
+                  <p className="text-[11px] text-muted">{ZONE_COPY[zone.slug] ?? "Zona do salão"}</p>
                 </div>
                 <span className="text-[11px] text-muted tnum">{zone.tables} mesas · {zone.seats} lugares</span>
               </li>
