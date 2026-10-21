@@ -78,6 +78,7 @@ export function Canvas3D({
   reducedMotion,
   focus,
   onFailure,
+  onReady,
 }: {
   tables: SceneTable[];
   zones: SceneZone[];
@@ -91,6 +92,7 @@ export function Canvas3D({
   reducedMotion: boolean;
   focus: { position: [number, number, number]; target: [number, number, number] } | null;
   onFailure?: () => void;
+  onReady?: () => void;
 }) {
   const preset = QUALITY_PRESETS[tier];
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
@@ -102,10 +104,12 @@ export function Canvas3D({
       const canvas = document.createElement("canvas");
       const context = canvas.getContext("webgl2") || canvas.getContext("webgl");
       setWebgl(!!context);
+      if (!context) onFailure?.();
     } catch {
       setWebgl(false);
+      onFailure?.();
     }
-  }, []);
+  }, [onFailure]);
 
   if (webgl === null) return <SceneFallback />;
   if (!webgl || failed) {
@@ -138,6 +142,7 @@ export function Canvas3D({
         onCreated={({ gl }) => {
           gl.toneMapping = THREE.ACESFilmicToneMapping;
           gl.setClearColor("#0A0908");
+          onReady?.();
         }}
         className="touch-none"
         aria-label="Salão 3D interativo do restaurante"

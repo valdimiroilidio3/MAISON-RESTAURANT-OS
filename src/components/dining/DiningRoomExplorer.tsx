@@ -1,8 +1,9 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  AlertTriangle,
   Boxes,
   Expand,
   Grid2X2,
@@ -16,6 +17,7 @@ import { TABLE_STATUS_META } from "@/lib/status";
 import type { TableStatus } from "@/lib/types";
 import type { SceneTable, SceneZone } from "@/components/three/room-types";
 import { FloorPlan2D } from "./FloorPlan2D";
+import { SceneBoundary } from "./SceneBoundary";
 import { useQualityTier } from "./use-quality";
 
 const Canvas3D = dynamic(() => import("./Canvas3D").then((m) => m.Canvas3D), {
@@ -57,11 +59,23 @@ export function DiningRoomExplorer({
   const [dimZone, setDimZone] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [hovered, setHovered] = useState<number | null>(null);
+  const [scene, setScene] = useState<"loading" | "ready" | "slow" | "failed">("loading");
+  const [attempt, setAttempt] = useState(0);
   const [focusTarget, setFocusTarget] = useState<{ position: [number, number, number]; target: [number, number, number] } | null>(
     null,
   );
   const containerRef = useRef<HTMLDivElement>(null);
   const { tier, reducedMotion, ready } = useQualityTier();
+
+  // If the 3D bundle never comes up (blocked WebGL, stale chunk, driver crash)
+  // the floor keeps working through the 2D plan instead of an endless spinner.
+  useEffect(() => {
+    if (view !== "3d" || !ready || scene === "ready" || scene === "failed") return;
+    const timer = window.setTimeout(() => {
+      setScene((current) => (current === "ready" ? current : "slow"));
+    }, 12_000);
+    return () => window.clearTimeout(timer);
+  }, [view, ready, scene]);
 
   const selected = tables.find((t) => t.id === selectedId) ?? null;
 
@@ -203,20 +217,52 @@ export function DiningRoomExplorer({
         <div className="relative flex-1 bg-[#0d0b09]">
           {view === "3d" ? (
             ready ? (
-              <Canvas3D
-                tables={tables}
-                zones={zones}
-                mode={mode}
-                selectedId={selectedId}
-                dimZone={dimZone}
-                onSelect={handleSelect}
-                hoveredId={hovered}
-                onHover={setHovered}
-                tier={tier}
-                reducedMotion={reducedMotion}
-                focus={focusTarget}
-                onFailure={() => setView("2d")}
-              />
+              <SceneBoundary
+                fallback={(retry) => (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center">
+                    <AlertTriangle className="size-5 text-amber" aria-hidden />
+                    <p className="font-display text-lg text-cream">A vista 3D não carregou.</p>
+                    <p className="max-w-sm text-[11px] text-muted">A planta 2D tem os mesmos dados e todas as ações.</p>
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => {
+                          setScene("loading");
+                          setAttempt((n) => n + 1);
+                          retry();
+                        }}
+                      >
+                        Tentar novamente
+                      </button>
+                      <button type="button" className="btn btn-primary btn-sm" onClick={() => setView("2d")}>
+                        Usar planta 2D
+                      </button>
+                    </div>
+                  </div>
+                )}
+                onError={() => setScene("failed")}
+              >
+                <Canvas3D
+                  key={attempt}
+                  tables={tables}
+                  zones={zones}
+                  mode={mode}
+                  selectedId={selectedId}
+                  dimZone={dimZone}
+                  onSelect={handleSelect}
+                  hoveredId={hovered}
+                  onHover={setHovered}
+                  tier={tier}
+                  reducedMotion={reducedMotion}
+                  focus={focusTarget}
+                  onReady={() => setScene("ready")}
+                  onFailure={() => {
+                    setScene("failed");
+                    setView("2d");
+                  }}
+                />
+              </SceneBoundary>
             ) : (
               <div className="absolute inset-0 flex items-center justify-center">
                 <Loader2 className="size-5 animate-spin text-gold" aria-hidden />
@@ -224,6 +270,24 @@ export function DiningRoomExplorer({
             )
           ) : (
             <div className={cn("h-full w-full", compact ? "p-2" : "p-3")}>
+              {scene === "failed" && (
+                <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-amber/30 bg-amber/5 px-2.5 py-1.5 text-[10px] text-amber">
+                  <span className="inline-flex items-center gap-1.5">
+                    <AlertTriangle className="size-3" aria-hidden /> 3D indisponível — a mostrar a planta 2D.
+                  </span>
+                  <button
+                    type="button"
+                    className="text-cream underline decoration-dotted underline-offset-2"
+                    onClick={() => {
+                      setScene("loading");
+                      setAttempt((n) => n + 1);
+                      setView("3d");
+                    }}
+                  >
+                    Tentar 3D
+                  </button>
+                </div>
+              )}
               <FloorPlan2D
                 tables={tables}
                 selectedId={selectedId}
@@ -232,6 +296,24 @@ export function DiningRoomExplorer({
                 mode={mode}
                 className="h-full min-h-[340px]"
               />
+            </div>
+          )}
+
+          {view === "3d" && scene === "slow" && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-ink/75 px-6 text-center backdrop-blur-sm">
+              <AlertTriangle className="size-5 text-amber" aria-hidden />
+              <p className="font-display text-lg text-cream">A vista 3D está a demorar mais do que o esperado.</p>
+              <p className="max-w-sm text-[11px] text-muted">
+                O WebGL pode estar desativado neste dispositivo. A planta 2D mantém todas as operações.
+              </p>
+              <div className="mt-2 flex gap-2">
+                <button type="button" className="btn btn-primary btn-sm" onClick={() => setView("2d")}>
+                  Usar planta 2D
+                </button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => window.location.reload()}>
+                  Recarregar
+                </button>
+              </div>
             </div>
           )}
 

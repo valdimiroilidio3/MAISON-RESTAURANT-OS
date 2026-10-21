@@ -91,7 +91,7 @@ export default function SalonPage() {
         </section>
       </div>
 
-      <section className="border-y border-line bg-surface/30 py-16">
+      <section id="planta-2d" className="scroll-mt-24 border-y border-line bg-surface/30 py-16">
         <div className="shell">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
