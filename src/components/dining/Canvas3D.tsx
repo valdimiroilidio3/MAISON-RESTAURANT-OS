@@ -115,9 +115,10 @@ export function Canvas3D({
   if (!webgl || failed) {
     return (
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 text-center">
-        <p className="font-display text-xl text-cream">O salão 3D não está disponível neste dispositivo</p>
+        <p className="font-display text-xl text-cream">Não foi possível apresentar o salão 3D</p>
         <p className="max-w-md text-sm text-muted">
-          O seu navegador não expõe WebGL. A planta 2D abaixo tem os mesmos dados e continua totalmente funcional.
+          O navegador não expôs WebGL ou a cena falhou ao iniciar. A planta 2D tem os mesmos dados e continua
+          totalmente funcional — todas as operações da sala estão disponíveis nela.
         </p>
         <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFailed(false)}>
           <RefreshCw className="size-3.5" aria-hidden /> Tentar novamente
