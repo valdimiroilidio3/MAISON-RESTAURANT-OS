@@ -1,8 +1,9 @@
 # MAISON® — Restaurant OS
 
 Sistema completo de operação para um restaurante: site público cinematográfico, sala de jantar 3D
-interativa, gestão de sala/comandas, Kitchen Display System, menu e inventário com baixa de stock por
-receita, reservas com prevenção de conflitos, relatórios financeiros e exportação CSV — tudo em
+interativa, **simulação ao vivo de um serviço completo** (clientes, pedidos, cozinha, mesas e
+pagamentos), gestão de sala/comandas, Kitchen Display System, menu e inventário com baixa de stock
+por receita, reservas com prevenção de conflitos, relatórios financeiros e exportação CSV — tudo em
 Next.js 16 (App Router), TypeScript, Tailwind CSS 4 e React Three Fiber.
 
 > **Demonstração local.** Os pagamentos são registados e confirmados manualmente por um gestor
@@ -65,6 +66,7 @@ npm test           # vitest (68 testes)
 - `/reservas` — disponibilidade real por data e número de pessoas (`/api/availability`), 14 dias de
   atalhos, formulário com consentimento, criação via API pública com anti-spam (honeypot) e
   confirmação com código de reserva. Indica explicitamente que o demo não envia email.
+- `/ao-vivo` — sala ao vivo: simulação contínua do serviço, aberta a qualquer visitante.
 - `/salon`, `/historia`, `/experiencias`, `/contactos`, `not-found`, `error`, `sitemap.xml`,
   `robots.txt`.
 
@@ -83,11 +85,42 @@ npm test           # vitest (68 testes)
   disponível — **a operação funciona sem 3D**.
 - Acessibilidade: `prefers-reduced-motion` desliga animações e o modo operacional tem alternativa 2D.
 
+### Sala ao vivo — simulação (`/ao-vivo`, `/admin/simulacao`)
+
+Um motor próprio (`src/lib/simulation/`) corre no browser e encena um serviço real. A cena 3D
+interpola os atores a cada frame (`useFrame`) e só volta a renderizar componentes quando muda o
+elenco em cena — as mesas, os estados e o relógio são lidos diretamente do motor:
+
+- **Relógio de Lisboa.** Começa na hora local verdadeira (Europe/Lisbon). Almoço 12:00–15:00, jantar
+  19:00–23:00, preparação às 11:00 e às 18:00, pausa entre serviços e **encerrado à segunda e à terça**.
+  A última entrada é 30 minutos antes do fecho; quem já está sentado termina a refeição.
+- **Clientes a entrar ao ritmo do serviço** (~2 minutos de restaurante entre grupos), recebidos pelo
+  *host*, conduzidos até à mesa e sentados nos lugares certos (as cadeiras vêm do mesmo
+  `chairSlots` da planta 2D e da cena 3D).
+- **Pedido → cozinha → prato → sobremesa.** O empregado vai à mesa, regista o pedido, a cozinha tem um
+  tempo de preparação e o prato é entregue; os talheres, o prato e o copo aparecem à frente de cada
+  convidado e vão sendo retirados. Cada tarefa é reservada a um membro da equipa (sem duplicação).
+- **Mesa reposta.** Depois do pagamento, os clientes saem, a mesa fica em `cleaning` e um empregado
+  limpa e volta a pôr a mesa antes de a libertar. Uma mesa nunca é libertada com um grupo ainda lá
+  dentro — invariante coberta por testes.
+- **Pagamento na mesa ou ao balcão**, com método (cartão, MB WAY ou dinheiro) e valores reais da carta.
+- **Casa de banho.** Convidados pedem licença, caminham até à porta do WC e desaparecem por 1,5–3 min.
+- **Dia e noite.** `dayLight` (0–1) controla sol, céu, candeeiros e luzes de serviço; às 21:30 a sala
+  está iluminada por velas e candeeiros.
+- **Controlos**: pausa, velocidade 1× (tempo real) até 360×, saltar para o próximo serviço,
+  recomeçar o dia, inspetor de mesas/equipa/registo e foco numa mesa no 3D.
+- **Determinismo**: a mesma seed produz o mesmo serviço — por isso o motor é testado sem browser.
+
+As figuras são **estilizadas e não fotorrealistas**: primitivas com proporções, articulações, mãos,
+cabelo, roupa e postura, animadas por código (respirar, piscar, andar, sentar, ler, comer, beber,
+falar, servir, limpar).
+
 ### Operação (`/admin`)
 
 | Área              | Funcionalidades                                                                                                                                                 |
 | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Painel**        | Indicadores do dia (receita confirmada, mesas ocupadas, comandas abertas, tempo médio), atalhos e estado da sala.                                                |
+| **Sala ao vivo**  | Simulação do serviço em 3D com inspetor de mesas, equipa e registo; pausa, velocidades, salto para o próximo serviço. |
 | **Sala**          | Mapa 3D + planta 2D, abrir comanda, adicionar artigos (carta única), modificadores/notas, enviar para cozinha, acompanhar estados, aplicar desconto, cobrar parcial/total, fechar, libertar mesa. |
 | **Cozinha (KDS)** | Tickets por coluna (novos / em preparação / prontos), tempos e cores de alerta, avanço de estado por artigo, atualização automática.                            |
 | **Menu**          | CRUD de produtos e categorias, preço, IVA, disponibilidade, destaque, alergénios, imagem.                                                                       |
@@ -132,12 +165,15 @@ src/
     login/             autenticação
   components/
     three/             cena 3D: Room, Furniture, People, materials, room-types
-    dining/            Canvas3D, DiningRoomExplorer, FloorPlan2D, FloorWorkspace, use-quality
+      sim/             Actor (figura humana animada) + SimulationScene (sala ao vivo)
+    dining/            Canvas3D, LiveSalon, DiningRoomExplorer, FloorPlan2D, FloorWorkspace
     admin/             AdminShell, KitchenBoard, MenuManager, InventoryBoard, ReservationsBoard…
     public/            SiteHeader, SiteFooter, MenuExplorer, ReservationFlow
     ui/                Logo, StatusBadge, Modal, Toast, ConfirmSubmit, EmptyState
   lib/                 db, seed, pricing, money, dates, orders, menu, inventory, reservations,
                        reports, auth, audit, api, validation, rate-limit, settings, status…
+    simulation/        engine, path (A* + grelha de navegação), start, types
+    floor-geometry.ts  lugares e dimensões partilhados por 2D, 3D e simulação
 tests/                 pricing, reservations-rules, orders/flows, layout, cena 3D
 ```
 
@@ -156,7 +192,7 @@ tests/                 pricing, reservations-rules, orders/flows, layout, cena 3
 npm test
 ```
 
-68 testes em 6 ficheiros:
+81 testes em 8 ficheiros:
 
 - `pricing.test.ts` — subtotais, IVA incluído/adicionado, serviço, descontos, arredondamento, saldo.
 - `reservations-rules.test.ts` — datas em Lisboa, capacidade e conflitos por mesa.
@@ -167,6 +203,12 @@ npm test
 - `layout.test.ts` — 20 mesas semeadas, coordenadas, cadeiras por lugar, mesas sem sobreposição.
 - `scene.test.tsx` — a cena 3D renderiza um grupo por mesa, orçamento de luzes fixo, culling de
   convidados em qualidade baixa, estados selecionado/hover/esbatido e modo `prefers-reduced-motion`.
+- `simulation.test.ts` — janelas de serviço, dias fechados, ciclo dia/noite, serviço completo com
+  cozinha e pagamentos, idas à casa de banho, corte da última entrada, esvaziamento na pausa,
+  determinismo por seed e a invariante "uma mesa, um grupo; nunca livre com clientes".
+- `simulation-scene.test.tsx` — monta a árvore real de React Three Fiber da sala ao vivo: um grupo
+  por mesa, cadeiras/loiça, atores em cena, entrada de novos atores e render noturno. Usa
+  `@react-three/test-renderer` (não precisa de WebGL).
 
 Além dos testes, o fluxo completo foi exercitado por HTTP contra o servidor de desenvolvimento
 (`POST /api/orders` → envio → cozinha → servir → pagamento → confirmação do gestor → fecho →
@@ -181,6 +223,10 @@ libertação da mesa), incluindo todos os casos de recusa por permissão.
 - **Sem envio de email/SMS.** A confirmação de reserva é mostrada no ecrã; a página diz isso ao
   utilizador. Não há fila de notificações.
 - **Figuras 3D estilizadas**, não fotorealistas. Não há carregamento de modelos GLTF externos.
+- **A simulação é uma reconstituição**, não clientes reais: não escreve na base de dados nem movimenta
+  stock. Os números servem para demonstrar o comportamento do serviço.
+- **Navegação**: os percursos desviam de mesas, balcão e paredes (A* sobre grelha), mas não de outras
+  pessoas em movimento; não há deteção de colisão entre atores.
 - **SQLite local** pensado para demonstração/uma instância. Para produção multi-instância seria
   necessário Postgres (ou Turso) e armazenamento partilhado de sessões.
 - **Upload de imagens** é feito por URL/caminho em `public/images`; não há pipeline de upload.

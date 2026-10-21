@@ -8,6 +8,7 @@ import {
   Boxes,
   CalendarDays,
   ChefHat,
+  Clapperboard,
   LayoutDashboard,
   LogOut,
   Menu as MenuIcon,
@@ -32,6 +33,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { href: "/admin", label: "Visão geral", icon: LayoutDashboard, roles: ["manager", "waiter", "chef"], hint: "turno" },
   { href: "/admin/sala", label: "Salão 3D", icon: UtensilsCrossed, roles: ["manager", "waiter"], hint: "mesas" },
+  { href: "/admin/simulacao", label: "Sala ao vivo", icon: Clapperboard, roles: ["manager", "waiter"], hint: "simulação" },
   { href: "/admin/cozinha", label: "Cozinha", icon: ChefHat, roles: ["manager", "chef", "waiter"], hint: "KDS" },
   { href: "/admin/reservas", label: "Reservas", icon: CalendarDays, roles: ["manager", "waiter"], hint: "agenda" },
   { href: "/admin/menu", label: "Menu", icon: MenuIcon, roles: ["manager"], hint: "produtos" },

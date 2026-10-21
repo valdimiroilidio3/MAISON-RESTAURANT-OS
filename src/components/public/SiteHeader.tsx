@@ -10,6 +10,7 @@ import { Logo } from "@/components/ui/Logo";
 const LINKS = [
   { href: "/menu", label: "Menu" },
   { href: "/salon", label: "Salão 3D" },
+  { href: "/ao-vivo", label: "Ao vivo" },
   { href: "/experiencias", label: "Experiências" },
   { href: "/historia", label: "História" },
   { href: "/contactos", label: "Contactos" },
