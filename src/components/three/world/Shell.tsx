@@ -18,6 +18,7 @@ import {
   FLOOR_LEVEL,
   ROOM_BOUNDS,
   INTERIOR,
+  KITCHEN,
   OPENINGS,
   PARTITIONS,
   PASS_OPENING,
@@ -384,10 +385,11 @@ function WcVestibule() {
  * it, at the same coordinates the simulation uses.
  */
 function KitchenWing() {
-  const back = INTERIOR.minZ - 1.75;
-  const from = PASS_OPENING.from - 1.2;
-  const to = PASS_OPENING.to + 2.0;
-  const depth = Math.abs(back - INTERIOR.minZ);
+  // Geometry comes from the plan, not from constants local to this component.
+  const back = KITCHEN.minZ;
+  const from = KITCHEN.minX;
+  const to = KITCHEN.maxX;
+  const depth = KITCHEN.maxZ - KITCHEN.minZ;
   const midX = (from + to) / 2;
   return (
     <group name="kitchen">

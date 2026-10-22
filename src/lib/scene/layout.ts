@@ -125,6 +125,18 @@ export const OPENINGS: Opening[] = [
   { id: "entrance", axis: "x", at: INTERIOR.maxZ, from: ENTRANCE.from, to: ENTRANCE.to, sill: 0, head: 2.6, kind: "entrance", clearance: 1.3, side: "negative" },
 ];
 
+/**
+ * The kitchen wing: a service room behind the back wall, reached through the
+ * pass. It used to be derived inside the 3D shell, which made it the fifth
+ * independent definition of the room. It belongs to the plan.
+ */
+export const KITCHEN: Rect = {
+  minX: PASS_OPENING.from - 1.2,
+  maxX: PASS_OPENING.to + 2.0,
+  minZ: INTERIOR.minZ - 1.75,
+  maxZ: INTERIOR.minZ,
+};
+
 /* ---------------------------------------------------------------- fixtures */
 
 export type FixtureKind = "counter" | "desk" | "planter" | "pot" | "pass" | "kitchen";
