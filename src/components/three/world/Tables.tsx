@@ -222,60 +222,175 @@ function ContactShadow({ table }: { table: TableLike }) {
   );
 }
 
-function Table({ table, status }: { table: TableLike; status?: keyof typeof TABLE_STATUS_META }) {
-  const dims = tableDimensions(table);
-  const geometry = useMemo(() => tableGeometries(table), [table]);
-  const meta = status ? TABLE_STATUS_META[status] : undefined;
-  const cloth = hasParasol(table) ? false : true;
+/**
+ * Tables, instanced by *dimension group*.
+ *
+ * Twenty tables share only five distinct top/pedestal geometries (round 1.24,
+ * round 1.64, rect 1.35 / 2.00 / 2.70), so five instanced meshes replace twenty
+ * per-table groups — ~115 meshes become ~26. The variation that actually exists
+ * between tables (cloth vs bare oak) is carried by per-instance colour, and the
+ * variation that is unique (the table number) stays a texture.
+ */
+interface TableGroup {
+  key: string;
+  geometry: { top: THREE.BufferGeometry; base: THREE.BufferGeometry; rim: THREE.BufferGeometry };
+  tables: TableLike[];
+  height: number;
+}
+
+function groupTables(): TableGroup[] {
+  const groups = new Map<string, TableGroup>();
+  for (const table of TABLES) {
+    const dims = tableDimensions(table);
+    const key = `${table.shape}-${dims.width.toFixed(2)}-${dims.depth.toFixed(2)}`;
+    const existing = groups.get(key);
+    if (existing) existing.tables.push(table);
+    else groups.set(key, { key, geometry: tableGeometries(table), tables: [table], height: dims.height });
+  }
+  return [...groups.values()];
+}
+
+const CLOTH = "#e6dccb";
+
+function InstancedTables({ groups }: { groups: TableGroup[] }) {
+  const tops = useRef<Array<THREE.InstancedMesh | null>>([]);
+  const bases = useRef<Array<THREE.InstancedMesh | null>>([]);
+  const rims = useRef<Array<THREE.InstancedMesh | null>>([]);
+  const cloths = useRef<Array<THREE.InstancedMesh | null>>([]);
+
+  useLayoutEffect(() => {
+    const matrix = new THREE.Matrix4();
+    const quaternion = new THREE.Quaternion();
+    const position = new THREE.Vector3();
+    const one = new THREE.Vector3(1, 1, 1);
+    const colour = new THREE.Color();
+
+    groups.forEach((group, groupIndex) => {
+      const clothOnly = group.tables.filter((table) => !hasParasol(table));
+      group.tables.forEach((table, index) => {
+        quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), table.rotation ?? 0);
+        position.set(table.x, 0, table.z);
+        matrix.compose(position, quaternion, one);
+        tops.current[groupIndex]?.setMatrixAt(index, matrix);
+        tops.current[groupIndex]?.setColorAt(index, colour.set(hasParasol(table) ? OAK : CLOTH));
+        bases.current[groupIndex]?.setMatrixAt(index, matrix);
+        rims.current[groupIndex]?.setMatrixAt(index, matrix);
+      });
+      clothOnly.forEach((table, index) => {
+        quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), table.rotation ?? 0);
+        position.set(table.x, -0.026, table.z);
+        matrix.compose(position, quaternion, new THREE.Vector3(1.015, 0.9, 1.015));
+        cloths.current[groupIndex]?.setMatrixAt(index, matrix);
+      });
+      const top = tops.current[groupIndex];
+      if (top) {
+        top.instanceMatrix.needsUpdate = true;
+        if (top.instanceColor) top.instanceColor.needsUpdate = true;
+        top.computeBoundingSphere();
+      }
+      for (const mesh of [bases.current[groupIndex], rims.current[groupIndex], cloths.current[groupIndex]]) {
+        if (!mesh) continue;
+        mesh.instanceMatrix.needsUpdate = true;
+        mesh.computeBoundingSphere();
+      }
+    });
+  }, [groups]);
 
   return (
-    <group name={`table-${table.code}`} position={[table.x, 0, table.z]} rotation={[0, table.rotation, 0]}>
-      <mesh geometry={geometry.top} castShadow receiveShadow>
-        <meshStandardMaterial color={cloth ? "#e6dccb" : OAK} roughness={cloth ? 0.78 : 0.4} metalness={cloth ? 0.02 : 0.14} />
-      </mesh>
-      {cloth && (
-        <mesh geometry={geometry.top} position={[0, -0.026, 0]} scale={[1.015, 0.9, 1.015]} castShadow>
-          <meshStandardMaterial color={LINEN} roughness={0.85} />
-        </mesh>
-      )}
-      <mesh geometry={geometry.base} castShadow>
-        <meshStandardMaterial color="#2f2318" roughness={0.55} metalness={0.15} />
-      </mesh>
-      <mesh geometry={geometry.rim}>
-        <meshStandardMaterial color={BRASS} roughness={0.3} metalness={0.9} />
-      </mesh>
+    <>
+      {groups.map((group, index) => (
+        <group key={group.key} name={`tabletop-set-${group.key}`}>
+          <instancedMesh
+            ref={(node) => {
+              tops.current[index] = node;
+            }}
+            args={[group.geometry.top, undefined, group.tables.length]}
+            castShadow
+            receiveShadow
+            frustumCulled={false}
+          >
+            <meshStandardMaterial roughness={0.55} metalness={0.06} />
+          </instancedMesh>
+          <instancedMesh
+            ref={(node) => {
+              cloths.current[index] = node;
+            }}
+            args={[group.geometry.top, undefined, group.tables.filter((table) => !hasParasol(table)).length]}
+            castShadow
+            frustumCulled={false}
+            visible={group.tables.some((table) => !hasParasol(table))}
+          >
+            <meshStandardMaterial color={LINEN} roughness={0.85} />
+          </instancedMesh>
+          <instancedMesh
+            ref={(node) => {
+              bases.current[index] = node;
+            }}
+            args={[group.geometry.base, undefined, group.tables.length]}
+            castShadow
+            frustumCulled={false}
+          >
+            <meshStandardMaterial color="#2f2318" roughness={0.55} metalness={0.15} />
+          </instancedMesh>
+          <instancedMesh
+            ref={(node) => {
+              rims.current[index] = node;
+            }}
+            args={[group.geometry.rim, undefined, group.tables.length]}
+            frustumCulled={false}
+          >
+            <meshStandardMaterial color={BRASS} roughness={0.3} metalness={0.9} />
+          </instancedMesh>
+        </group>
+      ))}
+    </>
+  );
+}
 
-      {/* table number, baked into a tiny texture: it is readable from the
-          camera without a single DOM node */}
-      <mesh position={[0, dims.height + 0.006, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[0.19, 0.095]} />
-        <meshBasicMaterial map={tableLabelTexture(table.code, { tone: cloth ? "light" : "dark" })} toneMapped={false} />
-      </mesh>
-
-      {meta && status !== "available" && (
-        <mesh position={[0, dims.height + 0.008, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry
-            args={[
-              table.shape === "round" ? dims.radius + 0.03 : dims.width / 2 - 0.02,
-              table.shape === "round" ? dims.radius + 0.055 : dims.width / 2 + 0.02,
-              44,
-            ]}
-          />
-          <meshBasicMaterial color={meta.dot} transparent opacity={0.5} toneMapped={false} />
-        </mesh>
-      )}
-      <ContactShadow table={table} />
+/** Table numbers and status rings: the parts that are genuinely per-table. */
+function TableDetails({ statuses }: { statuses?: TableStatusMap }) {
+  return (
+    <group name="marks">
+      {TABLES.map((table) => {
+        const dims = tableDimensions(table);
+        const status = statuses?.[table.code];
+        const meta = status ? TABLE_STATUS_META[status] : undefined;
+        const cloth = !hasParasol(table);
+        return (
+          <group key={table.code} name={`table-${table.code}`} position={[table.x, 0, table.z]} rotation={[0, table.rotation, 0]}>
+            {/* table number, baked into a tiny texture: readable from the camera
+                without a single DOM node */}
+            <mesh position={[0, dims.height + 0.006, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <planeGeometry args={[0.19, 0.095]} />
+              <meshBasicMaterial map={tableLabelTexture(table.code, { tone: cloth ? "light" : "dark" })} toneMapped={false} />
+            </mesh>
+            {meta && status !== "available" && (
+              <mesh position={[0, dims.height + 0.008, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+                <ringGeometry
+                  args={[
+                    table.shape === "round" ? dims.radius + 0.03 : dims.width / 2 - 0.02,
+                    table.shape === "round" ? dims.radius + 0.055 : dims.width / 2 + 0.02,
+                    44,
+                  ]}
+                />
+                <meshBasicMaterial color={meta.dot} transparent opacity={0.5} toneMapped={false} />
+              </mesh>
+            )}
+            <ContactShadow table={table} />
+          </group>
+        );
+      })}
     </group>
   );
 }
 
 export function Tables({ statuses, yaw }: { statuses?: TableStatusMap; yaw?: Map<number, number> }) {
   const yaws = useMemo(() => yaw ?? computeSeatPlan(TABLES), [yaw]);
+  const groups = useMemo(() => groupTables(), []);
   return (
     <group name="tables">
-      {TABLES.map((table) => (
-        <Table key={table.code} table={table} status={statuses?.[table.code]} />
-      ))}
+      <InstancedTables groups={groups} />
+      <TableDetails statuses={statuses} />
       <Chairs yaws={yaws} />
       <PlaceSettings yaw={yaws} />
     </group>
