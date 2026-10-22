@@ -13,3 +13,6 @@ data/*.db-*
 .vscode/
 .vercel/
 next-env.d.ts
+
+# local visual harness (software rasteriser, screenshots)
+.render-tmp/

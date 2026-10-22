@@ -9,6 +9,18 @@ export interface ChairSlot {
   rotation: number;
 }
 
+/**
+ * Chair seat height, in metres.
+ *
+ * One number, used by three things that must agree: the chair mesh, the seated
+ * characters' hip pivot, and the collision test that keeps a diner's knees under
+ * the table instead of inside it.
+ */
+export const CHAIR_SEAT_HEIGHT = 0.45;
+
+/** Table top height, same contract as the seat height above. */
+export const TABLE_HEIGHT = 0.74;
+
 export const ROUND_RADIUS: Record<number, number> = { 1: 0.5, 2: 0.62, 3: 0.72, 4: 0.82, 5: 0.9, 6: 0.98 };
 
 export function tableDimensions(table: { shape: "round" | "rect"; seats: number }): {

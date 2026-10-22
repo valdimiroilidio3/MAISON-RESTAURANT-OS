@@ -15,7 +15,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { TABLES, hasParasol, type TableLike } from "@/lib/scene/layout";
 import { computeSeatPlan, plannedSeats } from "@/lib/scene/placement";
-import { tableDimensions } from "@/lib/floor-geometry";
+import { CHAIR_SEAT_HEIGHT, tableDimensions } from "@/lib/floor-geometry";
 import { TABLE_STATUS_META } from "@/lib/status";
 import { blobTexture, tableLabelTexture } from "../materials";
 
@@ -46,7 +46,7 @@ function box(width: number, height: number, depth: number, x: number, y: number,
 function chairGeometry(): THREE.BufferGeometry {
   const parts = [
     // seat
-    box(0.44, 0.055, 0.42, 0, 0.45, 0),
+    box(0.44, 0.055, 0.42, 0, CHAIR_SEAT_HEIGHT, 0),
     // back frame (slightly reclined)
     box(0.42, 0.46, 0.05, 0, 0.7, 0.195, -0.09, 0),
     // back slat detail
