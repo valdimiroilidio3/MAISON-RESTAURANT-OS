@@ -7,6 +7,7 @@ import { AlertTriangle, Boxes, Loader2, Maximize2, RefreshCw, UsersRound, X } fr
 import { SceneBoundary } from "./SceneBoundary";
 import type { PublicFloor } from "@/lib/public-types";
 import type { SceneTable } from "@/components/three/room-types";
+import { CAMERA, focusOnTable, nightFromQuery, poseFromQuery, type CameraPose } from "@/lib/scene/framing";
 import { cn } from "@/lib/cn";
 
 const Canvas3D = dynamic(() => import("./Canvas3D").then((m) => m.Canvas3D), {
@@ -36,6 +37,11 @@ export function PublicSalonPreview({
   const [reducedMotion, setReducedMotion] = useState(false);
   const [status, setStatus] = useState<"loading" | "ready" | "slow" | "error">("loading");
   const [attempt, setAttempt] = useState(0);
+  const [focus, setFocus] = useState<CameraPose | null>(() =>
+    typeof window === "undefined" ? null : poseFromQuery(window.location.search),
+  );
+  // Same URL grammar as the operations floor: ?luz=noite opens the room at night.
+  const [night] = useState(() => (typeof window === "undefined" ? false : nightFromQuery(window.location.search) ?? false));
 
   useEffect(() => {
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -106,11 +112,16 @@ export function PublicSalonPreview({
             mode="preview"
             selectedId={selectedId}
             dimZone={null}
-            onSelect={setSelectedId}
+            onSelect={(id) => {
+              setSelectedId(id);
+              const table = floor.tables.find((candidate) => candidate.id === id);
+              setFocus(table ? focusOnTable(table.x, table.z) : CAMERA.overview);
+            }}
             onHover={() => {}}
             tier="medium"
             reducedMotion={reducedMotion}
-            focus={null}
+            daylight={night ? 0.06 : 1}
+            focus={focus}
           />
         </SceneBoundary>
       ) : (

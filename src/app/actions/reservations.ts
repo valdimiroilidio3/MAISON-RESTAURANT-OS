@@ -65,6 +65,7 @@ export async function createAdminReservationAction(_prev: ActionState, formData:
       partySize: formData.get("partySize"),
       note: formData.get("note") ?? "",
       tableId: formData.get("tableId") ? Number(formData.get("tableId")) : undefined,
+      zone: formData.get("zone") || undefined,
     });
     const result = createReservation({
       restaurantId: user.restaurantId,

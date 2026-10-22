@@ -1,12 +1,14 @@
 "use client";
 
 import { Component, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas } from "@react-three/fiber";
 import { OrbitControls, AdaptiveDpr, Preload } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import * as THREE from "three";
 import { Loader2, RefreshCw } from "lucide-react";
-import { DiningRoomScene } from "@/components/three/Room";
+import { DiningRoom } from "@/components/three/world/DiningRoom";
+import { CameraRig, FitCamera, RenderProbe, debugEnabled } from "@/components/three/world/CameraRig";
+import { CAMERA, type CameraPose } from "@/lib/scene/framing";
 import type { SceneTable, SceneZone } from "@/components/three/room-types";
 import { QUALITY_PRESETS, type QualityTier } from "./use-quality";
 
@@ -23,37 +25,6 @@ class CanvasErrorBoundary extends Component<{ children: ReactNode; onError: () =
     if (this.state.failed) return null;
     return this.props.children;
   }
-}
-
-function CameraRig({
-  focus,
-  controls,
-}: {
-  focus: { position: [number, number, number]; target: [number, number, number] } | null;
-  controls: React.RefObject<OrbitControlsImpl | null>;
-}) {
-  const { camera } = useThree();
-  const desired = useRef<{ position: THREE.Vector3; target: THREE.Vector3 } | null>(null);
-
-  useEffect(() => {
-    if (!focus) return;
-    desired.current = {
-      position: new THREE.Vector3(...focus.position),
-      target: new THREE.Vector3(...focus.target),
-    };
-  }, [focus]);
-
-  useFrame((_, delta) => {
-    if (!desired.current || !controls.current) return;
-    const factor = 1 - Math.pow(0.0001, delta);
-    camera.position.lerp(desired.current.position, factor);
-    controls.current.target.lerp(desired.current.target, factor);
-    controls.current.update();
-    if (camera.position.distanceTo(desired.current.position) < 0.05) {
-      desired.current = null;
-    }
-  });
-  return null;
 }
 
 function SceneFallback() {
@@ -77,6 +48,8 @@ export function Canvas3D({
   tier,
   reducedMotion,
   focus,
+  daylight = 1,
+  compact = false,
   onFailure,
   onReady,
 }: {
@@ -91,10 +64,15 @@ export function Canvas3D({
   tier: QualityTier;
   reducedMotion: boolean;
   focus: { position: [number, number, number]; target: [number, number, number] } | null;
+  /** 0 = night, 1 = midday. */
+  daylight?: number;
+  /** Smaller framing for embedded cards (hides the far terrace and the city). */
+  compact?: boolean;
   onFailure?: () => void;
   onReady?: () => void;
 }) {
   const preset = QUALITY_PRESETS[tier];
+  const [PROBE] = useState(() => debugEnabled());
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const [webgl, setWebgl] = useState<boolean | null>(null);
   const [failed, setFailed] = useState(false);
@@ -133,12 +111,17 @@ export function Canvas3D({
         shadows={preset.shadows ? "soft" : false}
         dpr={preset.dpr}
         frameloop={reducedMotion ? "demand" : "always"}
-        camera={{ position: [15.5, 12.5, 16.5], fov: 32, near: 0.1, far: 120 }}
+        camera={{
+          position: [...CAMERA.overview.position],
+          fov: CAMERA.overview.fov,
+          near: 0.1,
+          far: 200,
+        }}
         gl={{
           antialias: preset.antialias,
           alpha: false,
           powerPreference: "high-performance",
-          toneMappingExposure: 1.08,
+          toneMappingExposure: 1.18,
         }}
         onCreated={({ gl }) => {
           gl.toneMapping = THREE.ACESFilmicToneMapping;
@@ -149,7 +132,7 @@ export function Canvas3D({
         aria-label="Salão 3D interativo do restaurante"
       >
         <Suspense fallback={null}>
-          <DiningRoomScene
+          <DiningRoom
             tables={tables}
             zones={zones}
             mode={mode}
@@ -158,11 +141,13 @@ export function Canvas3D({
             dimZone={dimZone}
             onSelect={onSelect}
             onHover={onHover}
+            daylight={daylight}
             quality={{
               shadows: preset.shadows,
               guests: preset.guests,
               candles: preset.candles,
               labels: preset.labels,
+              practicals: preset.candles,
             }}
             reducedMotion={reducedMotion}
           />
@@ -173,16 +158,18 @@ export function Canvas3D({
           makeDefault
           enableDamping
           dampingFactor={0.08}
-          target={[1.2, 0.6, 0.6]}
-          minDistance={8}
-          maxDistance={42}
-          maxPolarAngle={Math.PI / 2.32}
-          minPolarAngle={0.32}
+          target={[...CAMERA.overview.target]}
+          minDistance={CAMERA.orbit.minDistance}
+          maxDistance={CAMERA.orbit.maxDistance}
+          maxPolarAngle={CAMERA.orbit.maxPolarAngle}
+          minPolarAngle={CAMERA.orbit.minPolarAngle}
           panSpeed={0.7}
           rotateSpeed={0.55}
           zoomSpeed={0.7}
         />
-        <CameraRig focus={focus} controls={controlsRef} />
+        <FitCamera pose={(focus as CameraPose | null) ?? undefined} />
+        <CameraRig pose={focus as CameraPose | null} controls={controlsRef} />
+        <RenderProbe enabled={PROBE} />
         <AdaptiveDpr pixelated />
       </Canvas>
     </CanvasErrorBoundary>

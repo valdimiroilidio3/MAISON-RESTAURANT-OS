@@ -1,6 +1,7 @@
 import "server-only";
 import type { DatabaseSync } from "node:sqlite";
 import { hashPassword } from "./password";
+import { TABLE_PLAN } from "./scene/layout";
 import { computeOrderTotals } from "./pricing";
 import { localDate, zonedToUtcIso } from "./dates";
 
@@ -109,36 +110,8 @@ export function seedDatabase(db: DatabaseSync): void {
   const insertTable = db.prepare(
     "INSERT INTO tables (restaurant_id,zone_id,code,seats,shape,pos_x,pos_z,rotation,status,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
   );
-  const tableDefs: {
-    code: string;
-    zone: string;
-    seats: number;
-    shape: "round" | "rect";
-    x: number;
-    z: number;
-    rotation?: number;
-  }[] = [
-    { code: "T01", zone: "esplanada", seats: 2, shape: "round", x: -9.4, z: -5.6 },
-    { code: "T02", zone: "esplanada", seats: 2, shape: "round", x: -6.8, z: -5.6 },
-    { code: "T03", zone: "esplanada", seats: 4, shape: "round", x: -9.4, z: -2.8 },
-    { code: "T04", zone: "esplanada", seats: 4, shape: "round", x: -6.6, z: -2.8 },
-    { code: "T05", zone: "esplanada", seats: 4, shape: "rect", x: -9.2, z: 0.1, rotation: 0 },
-    { code: "T06", zone: "esplanada", seats: 4, shape: "rect", x: -6.6, z: 0.2, rotation: 0 },
-    { code: "T20", zone: "esplanada", seats: 2, shape: "round", x: -9.3, z: 3.4 },
-    { code: "T07", zone: "sala", seats: 6, shape: "rect", x: -2.6, z: -3.6 },
-    { code: "T08", zone: "sala", seats: 4, shape: "rect", x: 0.5, z: -3.6 },
-    { code: "T09", zone: "sala", seats: 4, shape: "round", x: -2.6, z: -0.4 },
-    { code: "T10", zone: "sala", seats: 2, shape: "round", x: 0.7, z: -0.4 },
-    { code: "T11", zone: "sala", seats: 2, shape: "round", x: -2.6, z: 2.7 },
-    { code: "T12", zone: "sala", seats: 6, shape: "rect", x: 0.3, z: 3.3 },
-    { code: "T13", zone: "balcao", seats: 4, shape: "round", x: 4.0, z: -2.5 },
-    { code: "T14", zone: "balcao", seats: 8, shape: "rect", x: 5.4, z: -0.5 },
-    { code: "T15", zone: "balcao", seats: 2, shape: "round", x: 3.4, z: 1.5 },
-    { code: "T16", zone: "balcao", seats: 2, shape: "round", x: 6.7, z: 1.9 },
-    { code: "T17", zone: "balcao", seats: 2, shape: "round", x: 4.2, z: 4.3 },
-    { code: "T18", zone: "balcao", seats: 4, shape: "rect", x: 6.7, z: 4.6 },
-    { code: "T19", zone: "balcao", seats: 4, shape: "round", x: 3.3, z: 6.4 },
-  ];
+  const tableDefs = TABLE_PLAN;
+
   const tableIds: Record<string, number> = {};
   for (const t of tableDefs) {
     const res = insertTable.run(
@@ -1113,4 +1086,46 @@ export function seedDatabase(db: DatabaseSync): void {
   insertAudit.run(restaurantId, managerAna, "reservation.assign", "reservation", "RSV-2402", "Mesa T09 atribuída a Inês Carvalho", ago(60 * 5));
 
   db.exec("PRAGMA optimize;");
+}
+
+/**
+ * Keep an existing installation aligned with the canonical floor plan.
+ *
+ * Only the spatial attributes of each table are reconciled (position, size,
+ * shape). Operational state — status, orders, reservations — is never touched.
+ * Idempotent: running it on an already-correct database writes nothing.
+ */
+export function reconcileFloorPlan(db: DatabaseSync): number {
+  const rows = db.prepare("SELECT id, code FROM tables").all() as Array<{ id: number; code: string }>;
+  const byCode = new Map(rows.map((row) => [String(row.code), Number(row.id)]));
+  const zones = new Map<string, number>();
+  for (const zone of db.prepare("SELECT id, slug FROM zones").all() as Array<{ id: number; slug: string }>) {
+    zones.set(String(zone.slug), Number(zone.id));
+  }
+  const update = db.prepare(
+    "UPDATE tables SET zone_id=?, seats=?, shape=?, pos_x=?, pos_z=?, rotation=? WHERE id=? AND (zone_id<>? OR seats<>? OR shape<>? OR pos_x<>? OR pos_z<>? OR rotation<>?)",
+  );
+  let changed = 0;
+  for (const table of TABLE_PLAN) {
+    const id = byCode.get(table.code);
+    const zoneId = zones.get(table.zone);
+    if (!id || !zoneId) continue;
+    const result = update.run(
+      zoneId,
+      table.seats,
+      table.shape,
+      table.x,
+      table.z,
+      table.rotation,
+      id,
+      zoneId,
+      table.seats,
+      table.shape,
+      table.x,
+      table.z,
+      table.rotation,
+    );
+    if (Number(result.changes) > 0) changed += 1;
+  }
+  return changed;
 }

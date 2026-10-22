@@ -9,19 +9,27 @@ import { expect, it } from "vitest";
 import ReactThreeTestRenderer from "@react-three/test-renderer";
 import { SimulationWorld } from "@/components/three/sim/SimulationScene";
 import { Simulation } from "@/lib/simulation/engine";
+import { TABLE_PLAN } from "@/lib/scene/layout";
 import type { SimProduct, SimTable } from "@/lib/simulation/types";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-// A hermetic fixture (six tables) so the scene test never touches SQLite.
-const tables: SimTable[] = [
-  { id: 1, code: "T01", seats: 2, shape: "round", x: -9.4, z: -5.6, rotation: 0, zoneSlug: "esplanada", zoneName: "Esplanada" },
-  { id: 2, code: "T02", seats: 4, shape: "rect", x: -6.6, z: -2.8, rotation: 0, zoneSlug: "esplanada", zoneName: "Esplanada" },
-  { id: 3, code: "T03", seats: 4, shape: "round", x: -2.6, z: -3.6, rotation: 0, zoneSlug: "sala", zoneName: "Sala" },
-  { id: 4, code: "T04", seats: 2, shape: "round", x: 0.7, z: -0.4, rotation: 0, zoneSlug: "sala", zoneName: "Sala" },
-  { id: 5, code: "T05", seats: 6, shape: "rect", x: 5.4, z: -0.5, rotation: 0, zoneSlug: "balcao", zoneName: "Balcão" },
-  { id: 6, code: "T06", seats: 2, shape: "round", x: 6.7, z: 1.9, rotation: 0, zoneSlug: "balcao", zoneName: "Balcão" },
-];
+// A hermetic fixture drawn from the real plan (six tables) so the scene, the
+// nav grid and the assertions all agree on where furniture is. Coordinates are
+// copied from TABLE_PLAN on purpose: a stale copy is exactly the drift this
+// test is meant to catch.
+const FIXTURE_CODES = ["T01", "T04", "T07", "T10", "T14", "T16"];
+const tables: SimTable[] = TABLE_PLAN.filter((table) => FIXTURE_CODES.includes(table.code)).map((table, index) => ({
+  id: index + 1,
+  code: table.code,
+  seats: table.seats,
+  shape: table.shape,
+  x: table.x,
+  z: table.z,
+  rotation: table.rotation,
+  zoneSlug: table.zone,
+  zoneName: table.zone,
+}));
 
 const products: SimProduct[] = [
   { id: 1, name: "Entrada", priceCents: 900, category: "Entradas" },
@@ -66,10 +74,12 @@ it("mounts the live room: one group per table, chairs, tableware and actors", as
   const actorGroups = renderer.scene.findAll((node) => String(node.instance.name ?? "").startsWith("actor-"));
   const meshes = renderer.scene.findAllByType("Mesh");
 
-  expect(tableGroups).toHaveLength(tables.length);
+  // the room is always drawn from the canonical plan, even when a service only
+  // runs on a subset of tables
+  expect(tableGroups).toHaveLength(TABLE_PLAN.length);
   expect(actorGroups).toHaveLength(cast());
-  // 2 guests per table seat + chairs + plates + cutlery + room furniture
-  expect(meshes.length).toBeGreaterThan(300);
+  // room shell + fixtures + one instanced chair mesh + tableware + actors
+  expect(meshes.length).toBeGreaterThan(200);
 
   await renderer.unmount();
 });

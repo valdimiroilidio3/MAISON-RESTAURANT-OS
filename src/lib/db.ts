@@ -3,6 +3,7 @@ import { DatabaseSync, type StatementSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
 import { seedDatabase } from "./seed";
+import { reconcileFloorPlan } from "./seed";
 
 /**
  * Server-only data access. Uses Node's built-in SQLite (node:sqlite) so the
@@ -303,6 +304,9 @@ function initDb(): DatabaseSync {
   db.exec(SCHEMA);
   const row = db.prepare("SELECT COUNT(*) AS c FROM restaurants").get() as { c: number } | undefined;
   if (!row || Number(row.c) === 0) seedDatabase(db);
+  // The floor plan is code, not data: an existing database is reconciled with
+  // TABLE_PLAN on every boot (never touching status or orders).
+  reconcileFloorPlan(db);
   return db;
 }
 

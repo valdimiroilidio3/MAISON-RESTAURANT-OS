@@ -65,6 +65,8 @@ export const reservationSchema = z.object({
   partySize: z.coerce.number().int().min(1).max(10),
   note: z.string().max(400).optional().default(""),
   tableId: z.coerce.number().int().positive().optional(),
+  /** Optional seating preference; the allocator honours it when it can. */
+  zone: z.enum(["esplanada", "sala", "balcao"]).optional(),
 });
 
 export const reservationStatusSchema = z.object({

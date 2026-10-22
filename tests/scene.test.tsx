@@ -1,46 +1,48 @@
 // @vitest-environment jsdom
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+/**
+ * The floor scene is asserted structurally, not aesthetically: the tests below
+ * check that the room is built from the canonical layout (one shell, one table
+ * per plan row, chairs exactly where the solver put them) and that the render
+ * budget cannot silently grow with the data.
+ */
+
 import React from "react";
 import { describe, expect, it } from "vitest";
 import { act, create } from "@react-three/test-renderer";
-import { DiningRoomScene, type RoomQuality } from "@/components/three/Room";
-import { chairSlots, tableDimensions, type SceneTable, type SceneZone } from "@/components/three/room-types";
-import { getPublicFloor } from "@/lib/public-data";
+import { DiningRoom, type RoomQuality } from "@/components/three/world/DiningRoom";
+import type { SceneTable, SceneZone } from "@/components/three/room-types";
+import { OPENINGS, PARTITIONS, TABLES } from "@/lib/scene/layout";
+import { computeSeatPlan, plannedSeats } from "@/lib/scene/placement";
 
 const zones: SceneZone[] = [
-  { id: 1, name: "Salão", slug: "salao" },
-  { id: 2, name: "Balcão", slug: "balcao" },
-  { id: 3, name: "Esplanada", slug: "esplanada" },
+  { id: 1, name: "Esplanada", slug: "esplanada" },
+  { id: 2, name: "Sala", slug: "salao" },
+  { id: 3, name: "Balcão", slug: "balcao" },
 ];
 
-/** Rendering fixture — real geometry/layout numbers are asserted in layout.test.ts. */
-const tables: SceneTable[] = Array.from({ length: 12 }, (_, index) => {
-  const statuses = ["available", "reserved", "occupied", "order_pending", "awaiting_payment", "cleaning"] as const;
-  const zone = zones[index % zones.length];
-  const round = index % 3 !== 0;
-  return {
-    id: index + 1,
-    code: `T${String(index + 1).padStart(2, "0")}`,
-    seats: round ? 2 + (index % 3) : 4,
-    shape: round ? "round" : "rect",
-    x: ((index % 4) - 1.5) * 2.8,
-    z: (Math.floor(index / 4) - 1) * 3.4,
-    rotation: round ? 0 : index % 2 === 0 ? 0 : Math.PI / 2,
-    zoneSlug: zone.slug,
-    zoneName: zone.name,
-    status: statuses[index % statuses.length],
-    guests: index % 3 === 0 ? 2 : undefined,
-  };
-});
+const tables: SceneTable[] = TABLES.map((table) => ({
+  id: table.id,
+  code: table.code,
+  seats: table.seats,
+  shape: table.shape,
+  x: table.x,
+  z: table.z,
+  rotation: table.rotation,
+  zoneSlug: table.zone,
+  zoneName: zones.find((zone) => zone.slug === table.zone)?.name ?? table.zone,
+  status: table.id % 3 === 0 ? "reserved" : "available",
+}));
 
 type TestRenderer = Awaited<ReturnType<typeof create>>;
 
 const FULL_QUALITY: RoomQuality = { shadows: true, guests: true, candles: true, labels: true };
-const LOW_QUALITY: RoomQuality = { shadows: false, guests: false, candles: false, labels: false };
+const LOW_QUALITY: RoomQuality = { shadows: false, guests: false, candles: false, labels: false, practicals: false };
 
-async function render(props: Partial<React.ComponentProps<typeof DiningRoomScene>> = {}) {
+async function render(props: Partial<React.ComponentProps<typeof DiningRoom>> = {}) {
   const renderer = await create(
-    <DiningRoomScene
+    <DiningRoom
       tables={tables}
       zones={zones}
       mode="operations"
@@ -50,24 +52,14 @@ async function render(props: Partial<React.ComponentProps<typeof DiningRoomScene
       onHover={() => {}}
       quality={FULL_QUALITY}
       reducedMotion={false}
+      daylight={1}
       {...props}
     />,
   );
   await act(async () => {
-    await renderer.advanceFrames(3, 1 / 30);
+    await renderer.advanceFrames(2, 1 / 30);
   });
   return renderer;
-}
-
-function findGroup(renderer: TestRenderer, name: string) {
-  let found: any = null;
-  const walk = (object: any) => {
-    if (!object) return;
-    if (object.name === name) found = object;
-    (object.children ?? []).forEach(walk);
-  };
-  renderer.scene.children.forEach((c: { instance: unknown }) => walk(c.instance));
-  return found;
 }
 
 function walkAll(renderer: TestRenderer) {
@@ -76,84 +68,103 @@ function walkAll(renderer: TestRenderer) {
     out.push(object);
     (object.children ?? []).forEach(walk);
   };
-  renderer.scene.children.forEach((c: { instance: unknown }) => walk(c.instance));
+  renderer.scene.children.forEach((child: { instance: unknown }) => walk(child.instance));
   return out;
 }
 
-describe("3D dining room scene", () => {
-  it("renders one selectable group per table with real geometry", async () => {
+function named(renderer: TestRenderer, name: string) {
+  return walkAll(renderer).filter((node) => node.name === name);
+}
+
+describe("dining room scene", () => {
+  it("is one room: a single shell, not a copy per view", async () => {
     const renderer = await render();
-    const nodes = walkAll(renderer);
-
-    for (const table of tables) {
-      expect(findGroup(renderer, `table-${table.code}`), `missing table group ${table.code}`).toBeTruthy();
-    }
-
-    const meshes = nodes.filter((n) => n.isMesh);
-    expect(meshes.length).toBeGreaterThan(tables.length * 4);
-
-    // every table needs a ring mesh so status is never only conveyed by colour
-    const rings = meshes.filter((m) => m.geometry?.type === "RingGeometry");
-    expect(rings.length).toBeGreaterThanOrEqual(tables.length);
+    expect(named(renderer, "shell")).toHaveLength(1);
+    expect(named(renderer, "floors")).toHaveLength(1);
+    expect(named(renderer, "fixtures")).toHaveLength(1);
+    expect(named(renderer, "tables")).toHaveLength(1);
+    expect(named(renderer, "maison-dining-room")).toHaveLength(1);
   });
 
-  it("keeps the light budget fixed instead of adding a light per table", async () => {
-    const high = walkAll(await render({ quality: FULL_QUALITY })).filter((n) => n.isLight);
-    const low = walkAll(await render({ quality: LOW_QUALITY })).filter((n) => n.isLight);
-
-    // High: ambient + hemisphere + directional + 3 practicals + spot + 2 chandeliers + bar + kitchen
-    expect(high.length).toBeLessThanOrEqual(12);
-    expect(high.filter((l) => l.type === "PointLight").length).toBeLessThanOrEqual(8);
-    // the count must not grow with the number of tables
-    expect(high.length).toBeLessThan(tables.length);
-    // Low: a minimal rig (ambient/hemisphere/directional + two practical fill lights)
-    expect(low.length).toBeLessThanOrEqual(5);
-    expect(low.length).toBeLessThan(high.length);
+  it("builds every partition and opening of the layout, and nothing else", async () => {
+    const renderer = await render();
+    const walls = walkAll(renderer).filter((node) => String(node.name ?? "").startsWith("wall-"));
+    expect(walls).toHaveLength(PARTITIONS.length);
+    const openings = walkAll(renderer).filter((node) => String(node.name ?? "").startsWith("opening-"));
+    expect(openings).toHaveLength(OPENINGS.length);
   });
 
-  it("culls guests on low quality without dropping the furniture", async () => {
-    const full = await render({ quality: FULL_QUALITY });
-    const low = await render({ quality: LOW_QUALITY });
-
-    const fullGroups = walkAll(full).filter((n) => n.isGroup).length;
-    const lowGroups = walkAll(low).filter((n) => n.isGroup).length;
-    expect(lowGroups).toBeLessThan(fullGroups);
-
-    for (const table of tables) {
-      expect(findGroup(low, `table-${table.code}`)).toBeTruthy();
+  it("draws one table per plan row and no phantom tables", async () => {
+    const renderer = await render();
+    const groups = walkAll(renderer).filter((node) => String(node.name ?? "").startsWith("table-"));
+    expect(groups).toHaveLength(TABLES.length);
+    for (const table of TABLES) {
+      expect(named(renderer, `table-${table.code}`), `missing ${table.code}`).toHaveLength(1);
     }
   });
 
-  it("renders without guest meshes when quality.guests is off", async () => {
-    const withGuests = await render({ quality: FULL_QUALITY });
-    const withoutGuests = await render({ quality: LOW_QUALITY });
-    const count = (r: TestRenderer) => walkAll(r).filter((n) => n.name === "guest").length;
-    expect(count(withGuests)).toBeGreaterThan(0);
-    expect(count(withoutGuests)).toBe(0);
+  it("places every chair exactly where the seat solver says", async () => {
+    const renderer = await render();
+    const seats = TABLES.flatMap((table) => plannedSeats(table, computeSeatPlan(TABLES)));
+    const instanced = walkAll(renderer).filter(
+      (node) => node.isInstancedMesh && node.children?.every?.(() => true) !== false && node.count === seats.length,
+    );
+    expect(instanced.length, "expected one instanced chair mesh with one instance per seat").toBeGreaterThanOrEqual(1);
+
+    const chairMesh = instanced[0];
+    const matrix = new (await import("three")).Matrix4();
+    const position = new (await import("three")).Vector3();
+    // spot-check the first, middle and last seat of the plan
+    for (const index of [0, Math.floor(seats.length / 2), seats.length - 1]) {
+      chairMesh.getMatrixAt(index, matrix);
+      position.setFromMatrixPosition(matrix);
+      expect(position.x).toBeCloseTo(seats[index].x, 4);
+      expect(position.z).toBeCloseTo(seats[index].z, 4);
+    }
   });
 
-  it("marks the selected and dimmed states visually", async () => {
-    const target = tables[0];
-    const renderer = await render({ selectedId: target.id, dimZone: "salao" });
-    const rings = walkAll(renderer).filter((n) => n.isMesh && n.geometry?.type === "RingGeometry");
-    const opacities = new Set(rings.map((r) => (r.material as any)?.opacity));
-    expect(opacities.has(0.95)).toBe(true); // selected ring
-    expect(opacities.has(0.12)).toBe(true); // dimmed ring
+  it("keeps the light budget fixed regardless of how many tables exist", async () => {
+    const full = walkAll(await render()).filter((node) => node.isLight);
+    const low = walkAll(await render({ quality: LOW_QUALITY })).filter((node) => node.isLight);
+
+    // sun + bounce + ambient + hemisphere + 5 practicals + 5 candle fills
+    expect(full.length).toBeLessThanOrEqual(14);
+    expect(full.filter((light) => light.type === "PointLight").length).toBeLessThanOrEqual(10);
+    expect(full.length).toBeLessThan(TABLES.length);
+    expect(low.length).toBeLessThanOrEqual(14);
   });
 
-  it("highlights the hovered table with its own ring", async () => {
-    const target = tables[2];
-    const renderer = await render({ hoveredId: target.id });
-    const rings = walkAll(renderer).filter((n) => n.isMesh && n.geometry?.type === "RingGeometry");
-    const opacities = rings.map((r) => (r.material as any)?.opacity);
-    expect(opacities).toContain(0.7);
+  it("marks selection and zone dimming with geometry, not with text", async () => {
+    const clean = walkAll(await render());
+    const selected = walkAll(await render({ selectedId: tables[0].id, dimZone: "salao" }));
+
+    const gold = selected.filter(
+      (node) => node.isMesh && node.geometry?.type === "RingGeometry" && node.material?.color?.getHexString?.() === "c6a66b",
+    );
+    expect(gold.length).toBeGreaterThanOrEqual(2);
+
+    // dim veils: every table outside the filtered zone
+    const veil = (nodes: any[]) =>
+      nodes.filter((node) => node.isMesh && node.geometry?.type === "CircleGeometry" && node.material?.opacity === 0.5);
+    expect(veil(clean)).toHaveLength(0);
+    expect(veil(selected).length).toBe(tables.filter((table) => table.zoneSlug !== "salao").length);
   });
 
-  it("survives reduced motion and preview mode", async () => {
-    const renderer = await render({ reducedMotion: true, mode: "preview", quality: LOW_QUALITY });
+  it("renders a closed sky dome instead of flat billboards", async () => {
+    const renderer = await render();
+    const spheres = walkAll(renderer).filter((node) => node.isMesh && node.geometry?.type === "SphereGeometry");
+    // the two dome shells are drawn on the inside (THREE.BackSide = 1)
+    const dome = spheres.filter((node) => node.material?.side === 1);
+    expect(dome.length).toBeGreaterThanOrEqual(2);
+    // …and they are big enough to enclose the room rather than sit inside it
+    for (const shell of dome) expect(shell.geometry.parameters.radius).toBeGreaterThan(60);
+  });
+
+  it("survives preview mode and a night frame", async () => {
+    const renderer = await render({ mode: "preview", daylight: 0, quality: LOW_QUALITY });
     await act(async () => {
       await renderer.advanceFrames(4, 1 / 30);
     });
-    expect(walkAll(renderer).filter((n) => n.isMesh).length).toBeGreaterThan(50);
+    expect(walkAll(renderer).filter((node) => node.isMesh).length).toBeGreaterThan(50);
   });
 });

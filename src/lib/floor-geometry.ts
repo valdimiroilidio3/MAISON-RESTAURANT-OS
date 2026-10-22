@@ -25,17 +25,26 @@ export function tableDimensions(table: { shape: "round" | "rect"; seats: number 
   return { width, depth: 0.95, radius: 0, height: 0.74 };
 }
 
-/** Seat positions around a table in world coordinates, all facing the centre. */
+/**
+ * Seat positions around a table in world coordinates, all facing the centre.
+ *
+ * `seatOffset` is the distance from the table edge to the seat centre; the
+ * default (0.36 m round / 0.40 m rect) is the depth a chair is tucked in, which
+ * keeps neighbouring tables from sharing chair space. `yaw` rotates the seats
+ * around a round table — the placement solver uses it to find the orientation
+ * with the most clearance (see `src/lib/scene/placement.ts`).
+ */
 export function chairSlots(
   table: { shape: "round" | "rect"; seats: number; x: number; z: number; rotation: number },
   id = 0,
+  options: { seatOffset?: number; yaw?: number } = {},
 ): ChairSlot[] {
   const dims = tableDimensions(table);
   const slots: ChairSlot[] = [];
   const rotation = table.rotation ?? 0;
   if (table.shape === "round") {
-    const radius = dims.radius + 0.58;
-    const offset = (id % 4) * 0.22;
+    const radius = dims.radius + (options.seatOffset ?? 0.36);
+    const offset = options.yaw ?? (id % 4) * 0.22;
     for (let i = 0; i < table.seats; i++) {
       const angle = (i / table.seats) * Math.PI * 2 + offset;
       const dx = Math.cos(angle) * radius;
@@ -45,10 +54,11 @@ export function chairSlots(
   } else {
     const perSide = Math.ceil(table.seats / 2);
     const usable = dims.width - 0.55;
+    const reach = dims.depth / 2 + (options.seatOffset ?? 0.4);
     for (let i = 0; i < perSide; i++) {
       const offset = perSide === 1 ? 0 : -usable / 2 + (i * usable) / (perSide - 1);
-      slots.push({ x: offset, z: dims.depth / 2 + 0.55, rotation: Math.PI });
-      if (slots.length < table.seats) slots.push({ x: offset, z: -dims.depth / 2 - 0.55, rotation: 0 });
+      slots.push({ x: offset, z: reach, rotation: Math.PI });
+      if (slots.length < table.seats) slots.push({ x: offset, z: -reach, rotation: 0 });
     }
   }
   return slots.map((slot) => {

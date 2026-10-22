@@ -16,6 +16,7 @@ import {
   isWithinService,
   toMinutes,
 } from "./reservations-rules";
+import { rankTables, type SeatingPreferences } from "./scene/seating";
 import type { Reservation, ReservationStatus, SessionUser, TableStatus } from "./types";
 
 export const MAX_PARTY_PUBLIC = 10;
@@ -141,15 +142,37 @@ export function availabilityForDate(
   });
 }
 
+/**
+ * Table assignment.
+ *
+ * The database says what is free; `rankTables` says what is *good*. Fit, noise,
+ * daylight, access and the clearance between chairs are scored from the same
+ * canonical geometry the 3D room and the validator use, so the table a guest is
+ * given is one the room can actually host them at — not merely the smallest
+ * free row.
+ */
 function pickTableForSlot(
   restaurantId: number,
   date: string,
   time: string,
   partySize: number,
   excludeReservationId?: number,
-): { id: number; code: string; seats: number } | null {
-  const tables = all<{ id: number; code: string; seats: number }>(
-    "SELECT id, code, seats FROM tables WHERE restaurant_id=? AND status <> 'cleaning' ORDER BY seats ASC, code ASC",
+  preferences: SeatingPreferences = {},
+): { id: number; code: string; seats: number; reason: string } | null {
+  const tables = all<{
+    id: number;
+    code: string;
+    seats: number;
+    shape: "round" | "rect";
+    pos_x: number;
+    pos_z: number;
+    rotation: number;
+    slug: string | null;
+  }>(
+    `SELECT t.id, t.code, t.seats, t.shape, t.pos_x, t.pos_z, t.rotation, z.slug
+       FROM tables t LEFT JOIN zones z ON z.id = t.zone_id
+      WHERE t.restaurant_id=? AND t.status <> 'cleaning'
+      ORDER BY t.seats ASC, t.code ASC`,
     restaurantId,
   );
   const existing = all<{ id: number; table_id: number | null; time: string; status: string }>(
@@ -158,15 +181,28 @@ function pickTableForSlot(
     restaurantId,
     date,
   );
+  const intervals = existing.map(toInterval);
+  const busy = new Set<number>();
   for (const table of tables) {
-    if (!fitsParty(table.seats, partySize)) continue;
-    const conflict = hasTableConflict(
-      existing.map(toInterval),
-      { time, tableId: table.id, ignoreId: excludeReservationId },
-    );
-    if (!conflict) return table;
+    if (hasTableConflict(intervals, { time, tableId: table.id, ignoreId: excludeReservationId })) {
+      busy.add(table.id);
+    }
   }
-  return null;
+
+  const candidates = tables.map((table) => ({
+    id: table.id,
+    code: table.code,
+    seats: table.seats,
+    shape: table.shape,
+    x: table.pos_x,
+    z: table.pos_z,
+    rotation: table.rotation,
+    zone: table.slug ?? undefined,
+  }));
+  const ranked = rankTables(candidates, partySize, { preferences, unavailable: busy });
+  const best = ranked[0];
+  if (!best) return null;
+  return { id: best.table.id, code: best.table.code, seats: best.table.seats, reason: best.reasons[0] ?? "" };
 }
 
 function nextReservationCode(restaurantId: number): string {
@@ -187,18 +223,23 @@ export interface ReservationInput {
   note?: string;
   source?: Reservation["source"];
   tableId?: number | null;
+  /** Optional zone preference, honoured by the seating engine. */
+  zone?: "esplanada" | "sala" | "balcao";
 }
 
 export function createReservation(input: {
   restaurantId: number;
   data: ReservationInput;
   actor?: SessionUser | null;
-}): { reservation: Reservation; assignedTable: string | null } {
+}): { reservation: Reservation; assignedTable: string | null; assignedReason: string | null } {
   const data = input.data;
   const name = data.name.trim();
   const email = data.email.trim().toLowerCase();
   const phone = data.phone.trim();
   const today = localDate(0);
+  /** Why the allocator chose this table — carried out to the API response. */
+  let assignedReason: string | null = null;
+  let tableReason: string | null = null;
 
   if (name.length < 2) throw badRequest("Indique o nome do titular.");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw badRequest("Email inválido.");
@@ -212,7 +253,7 @@ export function createReservation(input: {
   if ((data.note ?? "").length > 400) throw badRequest("Nota demasiado longa.");
 
   return transaction(() => {
-    let table: { id: number; code: string; seats: number } | null = null;
+    let table: { id: number; code: string; seats: number; reason?: string } | null = null;
     if (data.tableId) {
       const requested = get<{ id: number; code: string; seats: number }>(
         "SELECT id, code, seats FROM tables WHERE id=? AND restaurant_id=?",
@@ -232,8 +273,12 @@ export function createReservation(input: {
       });
       if (clash) throw conflict(`A mesa ${requested.code} já está reservada perto das ${clash.time}.`);
       table = requested;
+      tableReason = "Mesa pedida pelo cliente";
     } else {
-      table = pickTableForSlot(input.restaurantId, data.date, data.time, data.partySize);
+      table = pickTableForSlot(input.restaurantId, data.date, data.time, data.partySize, undefined, {
+        zone: data.zone ?? null,
+      });
+      assignedReason = table?.reason ?? null;
       if (!table) {
         const alternatives = availabilityForDate(input.restaurantId, data.date, data.partySize)
           .filter((s) => s.availableTables > 0 && toMinutes(s.time) >= toMinutes(data.time))
@@ -310,7 +355,13 @@ export function createReservation(input: {
       );
     }
 
-    return { reservation: getReservation(input.restaurantId, id), assignedTable: table.code };
+    return {
+      reservation: getReservation(input.restaurantId, id),
+      assignedTable: table.code,
+      // The reason is what the guest is told *why* that table: the same scored
+      // explanation the allocator used, not a post-hoc caption.
+      assignedReason: assignedReason ?? tableReason,
+    };
   });
 }
 

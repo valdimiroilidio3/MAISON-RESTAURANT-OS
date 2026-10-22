@@ -29,6 +29,8 @@ export async function POST(request: Request) {
         time: result.reservation.time,
         partySize: result.reservation.partySize,
         table: result.assignedTable,
+        // why this table: the allocator's own explanation
+        tableReason: result.assignedReason,
         status: result.reservation.status,
       },
       { status: 201 },

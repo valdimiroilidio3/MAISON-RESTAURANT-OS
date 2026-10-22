@@ -33,8 +33,17 @@ interface Confirmation {
   time: string;
   partySize: number;
   table: string;
+  /** Why the allocator picked this table, in the guest's language. */
+  tableReason?: string | null;
   status: string;
 }
+
+const ZONE_OPTIONS: Array<{ value: "" | "sala" | "esplanada" | "balcao"; label: string; hint: string }> = [
+  { value: "", label: "Sem preferência", hint: "A casa escolhe a melhor mesa para o seu grupo" },
+  { value: "sala", label: "Sala", hint: "Madeira escura, luz baixa" },
+  { value: "esplanada", label: "Esplanada", hint: "Ao ar livre, sob os toldos" },
+  { value: "balcao", label: "Balcão", hint: "Para quem vem sozinho" },
+];
 
 function localToday(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Lisbon", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -55,6 +64,7 @@ export function ReservationFlow({ phone, maxParty = 10 }: { phone: string; maxPa
   const [email, setEmail] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [note, setNote] = useState("");
+  const [zone, setZone] = useState<"" | "sala" | "esplanada" | "balcao">("");
   const [consent, setConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,7 +111,7 @@ export function ReservationFlow({ phone, maxParty = 10 }: { phone: string; maxPa
       const response = await fetch("/api/reservations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, phone: customerPhone, date, time, partySize, note }),
+        body: JSON.stringify({ name, email, phone: customerPhone, date, time, partySize, note, zone: zone || undefined }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? "Não foi possível concluir a reserva.");
@@ -155,6 +165,12 @@ export function ReservationFlow({ phone, maxParty = 10 }: { phone: string; maxPa
             <dd className={pending ? "text-amber" : "text-mint"}>{pending ? "Pendente de confirmação" : "Confirmada"}</dd>
           </div>
         </dl>
+        {confirmation.tableReason && (
+          <p className="mt-4 rounded-lg border border-gold/20 bg-gold/[0.05] px-3 py-2 text-[11px] text-cream-dim">
+            <span className="text-gold-soft">Porquê esta mesa: </span>
+            {confirmation.tableReason}
+          </p>
+        )}
         <div className="mt-6 flex flex-wrap gap-2">
           <button
             type="button"
@@ -216,6 +232,33 @@ export function ReservationFlow({ phone, maxParty = 10 }: { phone: string; maxPa
             </div>
             <p className="mt-2 text-[10px] text-muted">
               Grupos com mais de {maxParty} pessoas: fale com a equipa pelo <a href={`tel:${phone.replace(/\s/g, "")}`} className="text-gold-soft underline-offset-2 hover:underline">{phone}</a>.
+            </p>
+          </div>
+
+          <div>
+            <p className="label">Zona</p>
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+              {ZONE_OPTIONS.map((option) => {
+                const active = zone === option.value;
+                return (
+                  <button
+                    key={option.value || "any"}
+                    type="button"
+                    aria-pressed={active}
+                    title={option.hint}
+                    onClick={() => setZone(option.value)}
+                    className={cn(
+                      "rounded-lg border px-2 py-2 text-[11px] transition",
+                      active ? "border-gold bg-gold/10 text-gold-soft" : "border-line text-cream-dim hover:border-line-strong",
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-[10px] text-muted">
+              A preferência é respeitada sempre que houver mesa livre na zona; caso contrário propomos a melhor alternativa.
             </p>
           </div>
 

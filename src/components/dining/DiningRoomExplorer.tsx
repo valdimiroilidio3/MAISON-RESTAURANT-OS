@@ -9,10 +9,13 @@ import {
   Grid2X2,
   Loader2,
   Minimize2,
+  Moon,
   RotateCcw,
+  Sun,
   UsersRound,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { CAMERA, focusOnTable, nightFromQuery, poseFromQuery, type CameraPose } from "@/lib/scene/framing";
 import { TABLE_STATUS_META } from "@/lib/status";
 import type { TableStatus } from "@/lib/types";
 import type { SceneTable, SceneZone } from "@/components/three/room-types";
@@ -61,8 +64,13 @@ export function DiningRoomExplorer({
   const [hovered, setHovered] = useState<number | null>(null);
   const [scene, setScene] = useState<"loading" | "ready" | "slow" | "failed">("loading");
   const [attempt, setAttempt] = useState(0);
-  const [focusTarget, setFocusTarget] = useState<{ position: [number, number, number]; target: [number, number, number] } | null>(
-    null,
+  // A deep link (?view=entrance&mesa=T14) opens the room on that pose, so a
+  // shared link and a screenshot always show the same framing.
+  const [focusTarget, setFocusTarget] = useState<CameraPose | null>(() =>
+    typeof window === "undefined" ? null : poseFromQuery(window.location.search),
+  );
+  const [night, setNight] = useState(
+    () => (typeof window === "undefined" ? false : nightFromQuery(window.location.search) ?? false),
   );
   const containerRef = useRef<HTMLDivElement>(null);
   const { tier, reducedMotion, ready } = useQualityTier();
@@ -81,12 +89,12 @@ export function DiningRoomExplorer({
 
   const focusTable = useCallback((id: number | null) => {
     if (!id) {
-      setFocusTarget({ position: [15.5, 12.5, 16.5], target: [1.2, 0.6, 0.6] });
+      setFocusTarget(CAMERA.overview);
       return;
     }
     const table = tables.find((t) => t.id === id);
     if (!table) return;
-    setFocusTarget({ position: [table.x + 3.4, 5.2, table.z + 4.2], target: [table.x, 0.75, table.z] });
+    setFocusTarget(focusOnTable(table.x, table.z));
   }, [tables]);
 
   const handleSelect = useCallback(
@@ -195,18 +203,30 @@ export function DiningRoomExplorer({
           <div className="flex items-center gap-1.5">
             {headerActions}
             {view === "3d" && (
-              <button
-                type="button"
-                onClick={() => {
-                  setFocusTarget({ position: [15.5, 12.5, 16.5], target: [1.2, 0.6, 0.6] });
-                  onSelect(null);
-                }}
-                className="btn btn-ghost btn-sm"
-                title="Repor vista geral"
-              >
-                <RotateCcw className="size-3.5" aria-hidden />
-                <span className="hidden sm:inline">Vista geral</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => setNight((value) => !value)}
+                  aria-pressed={night}
+                  className="btn btn-ghost btn-sm"
+                  title={night ? "Mostrar o salão de dia" : "Mostrar o salão à noite"}
+                >
+                  {night ? <Sun className="size-3.5" aria-hidden /> : <Moon className="size-3.5" aria-hidden />}
+                  <span className="hidden sm:inline">{night ? "Noite" : "Dia"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFocusTarget(CAMERA.overview);
+                    onSelect(null);
+                  }}
+                  className="btn btn-ghost btn-sm"
+                  title="Repor vista geral"
+                >
+                  <RotateCcw className="size-3.5" aria-hidden />
+                  <span className="hidden sm:inline">Vista geral</span>
+                </button>
+              </>
             )}
             <button type="button" onClick={toggleFullscreen} className="btn btn-ghost btn-sm" aria-label={fullscreen ? "Sair de ecrã inteiro" : "Ecrã inteiro"}>
               {fullscreen ? <Minimize2 className="size-3.5" aria-hidden /> : <Expand className="size-3.5" aria-hidden />}
@@ -256,6 +276,7 @@ export function DiningRoomExplorer({
                   tier={tier}
                   reducedMotion={reducedMotion}
                   focus={focusTarget}
+                  daylight={night ? 0.06 : 1}
                   onReady={() => setScene("ready")}
                   onFailure={() => {
                     setScene("failed");

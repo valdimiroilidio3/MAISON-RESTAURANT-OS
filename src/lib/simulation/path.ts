@@ -17,74 +17,87 @@ export interface NavObstacle {
   maxZ: number;
 }
 
-/**
- * The navigable floor includes the interior and the west terrace, which is
- * separated by a glass wall with a wide opening between z 0.6 and 2.8.
+/*
+ * The walkable world is derived from the canonical layout — partitions,
+ * fixtures and pots — so navigation, rendering and validation cannot disagree
+ * about where a wall or the bar counter is.
  */
-export const ROOM = { minX: -11.4, maxX: 9.6, minZ: -7.9, maxZ: 8.8 };
+import {
+  FIXTURES,
+  LANDMARKS as LAYOUT_LANDMARKS,
+  POTS,
+  ROOM_BOUNDS,
+  tableObb,
+  wallFootprints,
+  type TableLike,
+} from "@/lib/scene/layout";
+import { CHAIR_RADIUS, computeSeatPlan, plannedSeats } from "@/lib/scene/placement";
+import { obbCircleGap } from "@/lib/scene/spatial";
 
-/** Fixed furniture that is never walkable. */
+export const ROOM = ROOM_BOUNDS;
+export const LANDMARKS = LAYOUT_LANDMARKS;
+
 export const FIXED_OBSTACLES: NavObstacle[] = [
-  { minX: 4.15, maxX: 7.85, minZ: -6.25, maxZ: -4.05 }, // bar counter
-  { minX: 4.15, maxX: 7.85, minZ: -7.9, maxZ: -6.45 }, // back bar
-  // glass wall between dining room and terrace (door opening at z 0.6–2.8)
-  { minX: -4.95, maxX: -4.65, minZ: -7.9, maxZ: 0.6 },
-  { minX: -4.95, maxX: -4.65, minZ: 2.8, maxZ: 8.8 },
-  { minX: -4.6, maxX: -3.9, minZ: -2.4, maxZ: 0.5 }, // interior planters
-  { minX: -4.6, maxX: -3.9, minZ: 3.3, maxZ: 5.9 },
-  { minX: -11.2, maxX: -10.9, minZ: -7.9, maxZ: -3.0 }, // terrace planters
-  { minX: -11.2, maxX: -10.9, minZ: 5.6, maxZ: 8.8 },
+  ...wallFootprints().map((wall) => wall.rect),
+  ...FIXTURES.filter((fixture) => fixture.blocksCirculation).map((fixture) => fixture.footprint),
+  ...POTS.map((pot) => ({ minX: pot.x - pot.r, maxX: pot.x + pot.r, minZ: pot.z - pot.r, maxZ: pot.z + pot.r })),
 ];
 
-/** Landmarks used by the simulation (world coordinates). */
-export const LANDMARKS = {
-  door: { x: 8.9, z: 7.9 },
-  host: { x: 7.9, z: 6.4 },
-  counter: { x: 6.7, z: -3.35 },
-  pass: { x: 2.9, z: -7.2 },
-  bathroom: { x: -4.1, z: -6.55 },
-  kitchen: { x: 2.4, z: -7.55 },
-};
+export const NAV_LANDMARKS = LAYOUT_LANDMARKS;
 
 const CELL = 0.35;
 const BODY_RADIUS = 0.42;
 
+type NavTable = Pick<TableLike, "id" | "seats" | "shape" | "x" | "z" | "rotation">;
+
+/**
+ * The navigation grid.
+ *
+ * Obstacles are the real shapes, not a circle drawn around each table: the
+ * tabletop is an oriented box and every chair is a small circle, both inflated
+ * by the body radius. Treating a table as one fat disc (table + chair ring +
+ * body) used to seal every 1.4 m aisle in the plan, which made most of the room
+ * unreachable while *looking* free — the classic failure of a too-coarse model.
+ */
 export class NavGrid {
   private readonly cols: number;
   private readonly rows: number;
   private readonly blocked: Uint8Array;
+  private readonly seats: Array<{ x: number; z: number }> = [];
+  private readonly obstacles = new Map<number, ReturnType<typeof tableObb>>();
 
-  constructor(tables: { x: number; z: number; shape: "round" | "rect"; seats: number }[]) {
+  constructor(tables: NavTable[]) {
     this.cols = Math.ceil((ROOM.maxX - ROOM.minX) / CELL) + 1;
     this.rows = Math.ceil((ROOM.maxZ - ROOM.minZ) / CELL) + 1;
     this.blocked = new Uint8Array(this.cols * this.rows);
+
+    const plan = computeSeatPlan(tables as TableLike[]);
+    for (const table of tables) {
+      this.obstacles.set(table.id, tableObb(table as TableLike));
+      for (const seat of plannedSeats(table as TableLike, plan)) this.seats.push({ x: seat.x, z: seat.z });
+    }
 
     for (let cx = 0; cx < this.cols; cx++) {
       for (let cz = 0; cz < this.rows; cz++) {
         const x = ROOM.minX + cx * CELL;
         const z = ROOM.minZ + cz * CELL;
-        if (this.isSolid(x, z, tables)) this.blocked[cz * this.cols + cx] = 1;
+        if (this.isSolid(x, z)) this.blocked[cz * this.cols + cx] = 1;
       }
     }
   }
 
-  private isSolid(x: number, z: number, tables: { x: number; z: number; shape: "round" | "rect"; seats: number }[]) {
+  private isSolid(x: number, z: number) {
     if (x < ROOM.minX + 0.3 || x > ROOM.maxX - 0.3 || z < ROOM.minZ + 0.3 || z > ROOM.maxZ - 0.3) return true;
     for (const o of FIXED_OBSTACLES) {
       if (x > o.minX - BODY_RADIUS && x < o.maxX + BODY_RADIUS && z > o.minZ - BODY_RADIUS && z < o.maxZ + BODY_RADIUS) {
         return true;
       }
     }
-    for (const t of tables) {
-      const stretch = 0.58 + BODY_RADIUS;
-      if (t.shape === "round") {
-        const r = radiusFor(t.seats) + stretch;
-        if (Math.hypot(x - t.x, z - t.z) < r) return true;
-      } else {
-        const w = widthFor(t.seats) / 2 + stretch;
-        const d = 0.95 / 2 + stretch;
-        if (Math.abs(x - t.x) < w && Math.abs(z - t.z) < d) return true;
-      }
+    for (const obb of this.obstacles.values()) {
+      if (obbCircleGap(obb, { x, z, r: BODY_RADIUS }) < 0) return true;
+    }
+    for (const seat of this.seats) {
+      if (Math.hypot(x - seat.x, z - seat.z) < CHAIR_RADIUS + BODY_RADIUS) return true;
     }
     return false;
   }
@@ -151,7 +164,12 @@ export class NavGrid {
           const key = nz * this.cols + nx;
           const step = dx !== 0 && dz !== 0 ? 1.4142 : 1;
           const tentative = (gScore.get(current) ?? Infinity) + step;
-          if (tentative < (gScore.get(key) ?? Infinity)) {
+          const known = gScore.get(key) ?? Infinity;
+          // Parentheses matter: `a < b ?? c` evaluates as `(a < b) ?? c`, and a
+          // false result never falls through to the default, so the original
+          // `tentative < (gScore.get(key) ?? Infinity)` silently never expanded
+          // a single neighbour.
+          if (tentative < known) {
             cameFrom.set(key, current);
             gScore.set(key, tentative);
             fScore.set(key, tentative + this.heuristic(nx, nz, g.cx, g.cz));
@@ -161,6 +179,18 @@ export class NavGrid {
       }
     }
     return [to];
+  }
+
+  /**
+   * Can a body walk from `from` to `to`? Used by the spatial validator, so the
+   * answer must never be "yes" just because the two points coincide.
+   */
+  canReach(from: Point, to: Point, tolerance = 0.9): boolean {
+    const goal = this.nearestFree(to);
+    const path = this.path(from, goal);
+    if (path.length < 2) return false;
+    const last = path[path.length - 1];
+    return Math.hypot(last.x - goal.x, last.z - goal.z) <= tolerance;
   }
 
   private reconstruct(cameFrom: Map<number, number>, end: number): Point[] {
@@ -206,12 +236,4 @@ export class NavGrid {
     const dz = Math.abs(az - bz);
     return Math.max(dx, dz) + 0.4142 * Math.min(dx, dz);
   }
-}
-
-function radiusFor(seats: number) {
-  return { 1: 0.5, 2: 0.62, 3: 0.72, 4: 0.82, 5: 0.9, 6: 0.98 }[Math.min(6, Math.max(1, seats))] ?? 0.82;
-}
-
-function widthFor(seats: number) {
-  return seats <= 2 ? 1.0 : seats <= 4 ? 1.35 : seats <= 6 ? 2.0 : 2.7;
 }

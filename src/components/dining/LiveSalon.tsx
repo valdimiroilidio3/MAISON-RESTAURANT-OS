@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import {
   Bath,
@@ -23,6 +23,8 @@ import { eur } from "@/lib/money";
 import { formatClock, nextOpening, Simulation, weekdayShort, type SimSnapshot } from "@/lib/simulation/engine";
 import type { Phase, SimProduct, SimTable } from "@/lib/simulation/types";
 import { SimulationWorld } from "@/components/three/sim/SimulationScene";
+import { FitCamera, RenderProbe } from "@/components/three/world/CameraRig";
+import { CAMERA } from "@/lib/scene/framing";
 
 const SPEEDS = [
   { value: 1, label: "1× tempo real" },
@@ -65,18 +67,6 @@ const STATUS_DOT: Record<string, string> = {
 };
 
 /** Frames the whole room (interior + terrace) on both wide and narrow screens. */
-function FitCamera() {
-  const { camera, size } = useThree();
-  useEffect(() => {
-    const aspect = size.width / Math.max(1, size.height);
-    const scale = aspect < 1.15 ? 1.42 : 1;
-    camera.position.set(16.5 * scale, 13 * scale, 18.5 * scale);
-    camera.lookAt(-1, 0.6, 0.6);
-    camera.updateProjectionMatrix();
-  }, [camera, size.width, size.height]);
-  return null;
-}
-
 function phaseClock(phase: Phase) {
   if (phase === "lunch") return "12:00–15:00";
   if (phase === "dinner") return "19:00–23:00";
@@ -124,6 +114,7 @@ export function LiveSalon({
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
+  const [PROBE] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("debug3d") === "1");
 
   useEffect(() => {
     const canvas = document.createElement("canvas");
@@ -249,15 +240,13 @@ export function LiveSalon({
                 shadows
                 dpr={[1, 1.75]}
                 gl={{ antialias: true, powerPreference: "high-performance" }}
-                camera={{ position: [15.5, 12.5, 16.5], fov: 32, near: 0.5, far: 120 }}
+                camera={{ position: [...CAMERA.overview.position], fov: CAMERA.overview.fov, near: 0.2, far: 160 }}
                 onCreated={({ gl }) => {
                   gl.toneMapping = THREE.ACESFilmicToneMapping;
                   gl.toneMappingExposure = 1.02;
                   gl.outputColorSpace = THREE.SRGBColorSpace;
                 }}
               >
-                <color attach="background" args={["#0a0908"]} />
-                <fog attach="fog" args={["#0d0b09", 30, 62]} />
                 <FitCamera />
                 <SimulationWorld
                   sim={sim}
@@ -267,12 +256,13 @@ export function LiveSalon({
                   focusedTableId={focusTableId}
                   light={lightRef}
                 />
+                <RenderProbe enabled={PROBE} />
                 <OrbitControls
-                  target={[-1, 0.6, 0.6]}
+                  target={[...CAMERA.overview.target]}
                   enablePan
-                  minDistance={6}
-                  maxDistance={32}
-                  maxPolarAngle={Math.PI / 2.15}
+                  minDistance={CAMERA.orbit.minDistance}
+                  maxDistance={CAMERA.orbit.maxDistance}
+                  maxPolarAngle={CAMERA.orbit.maxPolarAngle}
                   enableDamping
                   dampingFactor={0.08}
                 />
